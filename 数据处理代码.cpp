@@ -15,6 +15,7 @@ class Data {
 	string drive;
 	vector <int> data;
 	int data_num;
+	int labelnum[12];
 
 public:
 	//构造函数：参数为文件路径
@@ -22,6 +23,8 @@ public:
 		drive = drivetmp;
 		filename = drive + name;
 		save_name_head = drive + savename;
+		for (int i = 0; i < 12; i++)
+			labelnum[i] = 0;
 	}
 
 	//读取函数：读取text文件，保存数据数量至data_num
@@ -54,94 +57,73 @@ public:
 
 	//输出函数：把读入的数据输出
 	void display() {
+		cout << endl;
 		cout << "dispaly:\n";
 		for (int i = 0; i < data_num; i++) {
 			cout << data[i] << "  ";
 			if ((i + 1) % 10 == 0)	cout << endl;
 		}
 		cout << endl << endl << data_num << endl;
-	}
-
-	//数据处理函数：把数据按照 五周+一天（lable） 的大端格式进行划分并保存
-	void ODplusFW() {
-		char* tmpc;
-		int index = 25, i;
-		int count = data_num - 25;
-		stringstream ss;
-		ss << (int)(count*0.9);
-		string trainname = save_name_head + "_一天+五周_train_" + ss.str() + "组数据.bin";
-		ss.str("");
-		ss << (count - (int)(count*0.9));
-		string evalname = save_name_head + "_一天+五周_eval_" + ss.str() + "组数据.bin";
-		ofstream fout1(trainname, ofstream::binary);
-		ofstream fout2(evalname, ofstream::binary);
-
-		for (i = 0; i < count*0.9; i++) {
-			tmpc = (char*)&data[index];
-			fout1.write(tmpc, 4);
-			index++;
-
-			for (int j = 0; j < 25; j++) {
-				tmpc = (char*)&data[i + j];
-				fout1.write(tmpc, 4);
-			}
-		}
-		fout1.close();
-
-		for (; i < count; i++) {
-			tmpc = (char*)&data[index];
-			fout2.write(tmpc, 4);
-			index++;
-
-			for (int j = 0; j < 25; j++) {
-				tmpc = (char*)&data[i + j];
-				fout2.write(tmpc, 4);
-			}
-		}
-		fout2.close();
+		/*for (int i = 0; i < 12; i++)
+			cout << labelnum[i] << endl;*/
 	}
 
 	//数据处理函数：把数据按照 五周+升降幅度百分比（lable） 的大端格式进行划分并保存
-	void PerplusFW() {
+	void PerplusDay_train(float percent,int batchsize) {
 		char* tmpc;
-		int index = 25, i;
-		int count = data_num - 25;
+		int count = data_num - batchsize;
+		int size = batchsize;
+
 		stringstream ss;
-		ss << (int)(count*0.9);
-		string trainname = save_name_head + "_涨幅+五周_train_" + ss.str() + "组数据.bin";
+		ss << batchsize;
+		string trainname = save_name_head + "_涨幅+" + ss.str() + "天_train_";
 		ss.str("");
-		ss << (count - (int)(count*0.9));
-		string evalname = save_name_head + "_涨幅+五周_eval_" + ss.str() + "组数据.bin";
-		ofstream fout1(trainname, ofstream::binary);
-		ofstream fout2(evalname, ofstream::binary);
+		ss << (int)(count * percent);
+		trainname += ss.str() + "组数据.bin";
+		ofstream fout(trainname, ofstream::binary);
 
-		for (i = 0; i < count*0.9; i++) {
-			int label = FindPercent(data[index - 1], data[index]);
+		for (int i = 0; i < count * percent; i++) {
+			int label = FindPercent7(data[batchsize - 1], data[batchsize]);
 			tmpc = (char*)&label;
-			fout1.write(tmpc, 4);
-			index++;
-
-			for (int j = 0; j < 25; j++) {
+			fout.write(tmpc, 4);
+			batchsize++;
+			
+			for (int j = 0; j < size; j++) {
 				tmpc = (char*)&data[i + j];
-				fout1.write(tmpc, 4);
+				fout.write(tmpc, 4);
 			}
 		}
-		fout1.close();
-
-		for (; i < count; i++) {
-			int label = FindPercent(data[index - 1], data[index]);
-			tmpc = (char*)&label;
-			fout2.write(tmpc, 4);
-			index++;
-
-			for (int j = 0; j < 25; j++) {
-				tmpc = (char*)&data[i + j];
-				fout2.write(tmpc, 4);
-			}
-		}
-		fout2.close();
+		fout.close();
 	}
-	int FindPercent(int first,int second) {
+	void PerplusDay_eval(float per,int batchsize) {
+		char* tmpc;
+		int count = data_num - batchsize;
+		int size = batchsize;
+		float percent = 1 - per;
+
+		stringstream ss;
+		ss << batchsize;
+		string evalname = save_name_head + "_涨幅+" + ss.str() + "天_train_";
+		ss.str("");
+		ss << (count - (int)(count * percent));
+		evalname += ss.str() + "组数据.bin";
+		ofstream fout(evalname, ofstream::binary);
+
+		for (int i = count * percent; i < count; i++) {
+			int label = FindPercent7(data[batchsize - 1], data[batchsize]);
+			tmpc = (char*)&label;
+			fout.write(tmpc, 4);
+			batchsize++;
+
+			for (int j = 0; j < size; j++) {
+				tmpc = (char*)&data[i + j];
+				fout.write(tmpc, 4);
+			}
+		}
+		fout.close();
+	}
+	//11个label
+	int FindPercent11(int first,int second) {
 		float per = (second*1.0 - first*1.0) / (first*1.0);
 		per *= 100;
 		int label = 0;
@@ -166,10 +148,29 @@ public:
 		if (between(-8.0, -6.0, per)) return label;
 		label++;
 		if (between(-10.0, -8.0, per)) return label;
+		cout << label << endl;
+		return ++label;
+	}
+	//7个label
+	int FindPercent7(int first, int second) {
+		float per = (second*1.0 - first*1.0) / (first*1.0);
+		per *= 100;
+		int label = 0;
+
+		//cout << per << "    " << first << "    " << second << endl;
+		if (between(4.0, 10.0, per)) return label;
 		label++;
-		if (between(INF, 10.0, per)) return label;
+		if (between(2.0, 4.0, per))	return label;
 		label++;
-		if (between(-10.0, -INF, per)) return label;
+		if (between(0.0, 2.0, per))	return label;
+		label++;
+		if (between(-2.0, 0.0, per)) return label;
+		label++;
+		if (between(-4.0, -2.0, per)) return label;
+		label++;
+		if (between(-10.0, -4.0, per)) return label;
+		//cout << label << endl;
+		return ++label;
 	}
 	//判断是否在区间内
 	bool between(float min, float max,  float data) {
@@ -180,9 +181,9 @@ public:
 };
 
 int main() {
-	string drive = "F:\\data_pro\\";
-	string name = "data_for_test_since1991.txt";
-	string savename = "平安银行_since1991";
+	string drive = "F:\\data_pro\\BankData\\";
+	string name = "data_since1991_pinanyinhang_float.txt";
+	string savename = "农业银行_since2010";
 
 	FILE *file=fopen((drive+name).c_str(),"r");
 	if (!file) {
@@ -193,10 +194,10 @@ int main() {
 	fclose(file);
 
 	Data data(name,savename,drive);
-	data.readtext_int();
+	data.readtext_float();
+	data.PerplusDay_train(0.9,225);
+	data.PerplusDay_eval(0.1,225);
 //	data.display();
-	data.ODplusFW();
-	data.PerplusFW();
 
 	system("pause");
 	return 0;
